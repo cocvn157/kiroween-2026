@@ -1,0 +1,16 @@
+{
+  "name": "Run Codec & Pipeline Tests on Core Edit",
+  "version": "1.0.0",
+  "description": "Automatically runs TypeScript typecheck and Vitest whenever core DSP, Crypto, or Steganography modules change.",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "src/core/**/*.ts",
+      "src/__tests__/**/*.ts"
+    ]
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "npm.cmd run typecheck && npm.cmd test"
+  }
+}

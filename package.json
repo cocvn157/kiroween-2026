@@ -1,0 +1,28 @@
+{
+  "name": "frankenwave-kiroween-2026",
+  "private": true,
+  "version": "1.0.0",
+  "description": "FRANKENWAVE: WebCrypto + Kansas-City FSK Acoustic Modem + LSB Steganographic Sigil Cartridge Studio for Kiroween 2026",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7",
+    "vitest": "^3.0.4"
+  }
+}

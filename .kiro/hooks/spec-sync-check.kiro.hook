@@ -1,0 +1,17 @@
+{
+  "name": "Sync Specs When Core Binary Frame Changes",
+  "version": "1.0.0",
+  "description": "Prompts Kiro agent to verify .kiro/specs/frankenwave-chimera/design.md stays aligned when wire formats change.",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "src/core/cryptoEnvelope.ts",
+      "src/core/fskModem.ts",
+      "src/core/stegCartridge.ts"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A wire-format codec file was modified. Check .kiro/specs/frankenwave-chimera/design.md and verify the byte frame diagrams, magic bytes, frequencies, and CRC-32 specifications still match the code verbatim. Update only documentation if needed."
+  }
+}
