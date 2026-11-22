@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  computeFskSpectrum,
   decodeFSK,
   decodeWavPcm16,
   encodeFSK,
+  FSK_FREQ_MARK,
+  FSK_FREQ_SPACE,
   resampleLinear,
   type BaudRate,
 } from '../core/fskModem.ts';
@@ -76,5 +79,22 @@ describe('fskModem (Kansas-City FSK DSP + Clock Recovery)', () => {
       mangled[i] = 0;
     }
     expect(() => decodeFSK(mangled, encoded.sampleRate, 600)).toThrow(/No valid FRANKENWAVE/);
+  });
+
+  it('computes Goertzel spectrum peaking accurately at 2400 Hz during pilot tone', () => {
+    const encoded = encodeFSK(samplePayload, 600);
+    // Pilot tone sits between 0.08s and 0.18s (samples 4800..8640) at 2400 Hz
+    const bins = computeFskSpectrum(encoded.samples, 5000, 1920, encoded.sampleRate, 600, 3200, 27);
+    expect(bins.length).toBe(27);
+    const peak = bins.reduce((best, cur) => (cur.magnitude > best.magnitude ? cur : best), bins[0]!);
+    expect(peak.freqHz).toBe(FSK_FREQ_MARK);
+
+    // Tail tone sits near the end before 60ms trailing silence at 1200 Hz
+    const tailStart = encoded.samples.length - Math.round(0.1 * encoded.sampleRate);
+    const tailBins = computeFskSpectrum(encoded.samples, tailStart, 1440, encoded.sampleRate, 600, 3200, 27);
+    const tailPeak = tailBins.reduce((best, cur) => (cur.magnitude > best.magnitude ? cur : best), tailBins[0]!);
+    expect(tailPeak.freqHz).toBe(FSK_FREQ_SPACE);
+
+    expect(computeFskSpectrum(new Float32Array(0), 0, 100, 48_000)).toEqual([]);
   });
 });

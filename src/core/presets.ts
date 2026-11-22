@@ -39,9 +39,9 @@ export const SPECIMEN_PRESETS: readonly SpecimenPreset[] = [
   {
     id: 'synth-patch',
     title: 'TESLA COIL HARMONIC PATCH',
-    badge: 'EXECUTABLE PATCH',
+    badge: 'TESLA PATCH',
     passphrase: 'kiroween',
-    description: 'Sandboxed audio/visual harmonic synthesizer configuration run inside Autopsy Runner.',
+    description: 'Sandboxed 7-fold phosphor FM harmonic synthesizer run inside Autopsy Runner.',
     payload: JSON.stringify(
       {
         kind: 'FRANKENPATCH_V1',
@@ -57,11 +57,51 @@ export const SPECIMEN_PRESETS: readonly SpecimenPreset[] = [
     ),
   },
   {
+    id: 'crimson-alarm',
+    title: 'CRIMSON CATHODE SIREN',
+    badge: 'CRIMSON PATCH',
+    passphrase: 'igor',
+    description: 'High-symmetry arterial crimson FM alarm patch (encrypted with passphrase "igor").',
+    payload: JSON.stringify(
+      {
+        kind: 'FRANKENPATCH_V1',
+        label: 'IGOR LAB OVERLOAD',
+        carrierHz: 146.83,
+        modHz: 6.5,
+        symmetry: 9,
+        pulseBpm: 128,
+        palette: 'crimson',
+      } satisfies FrankenPatchV1,
+      null,
+      2,
+    ),
+  },
+  {
+    id: 'amber-organ',
+    title: 'AMBER ANALOG DRONE',
+    badge: 'AMBER PATCH',
+    passphrase: '',
+    description: 'Public 5-fold Tesla amber cathode drone patch for instant unencrypted WAV/PNG export.',
+    payload: JSON.stringify(
+      {
+        kind: 'FRANKENPATCH_V1',
+        label: 'VOLTA CATHODE ORGAN',
+        carrierHz: 82.41,
+        modHz: 2.25,
+        symmetry: 5,
+        pulseBpm: 68,
+        palette: 'amber',
+      } satisfies FrankenPatchV1,
+      null,
+      2,
+    ),
+  },
+  {
     id: 'kiroween-capsule',
     title: 'KIROWEEN TIME CAPSULE',
-    badge: 'PLAIN / PUBLIC',
+    badge: 'TIME CAPSULE',
     passphrase: '',
-    description: 'Unencrypted public capsule demonstrating compression + lossless FSK & PNG extraction.',
+    description: 'Unencrypted public capsule demonstrating deflate-raw compression + lossless FSK & PNG extraction.',
     payload:
       'SPECIMEN LOG #2026-KW\n' +
       'Four incompatible organs stitched alive on the operating table:\n' +

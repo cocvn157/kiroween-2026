@@ -1,3 +1,4 @@
+import { parseChimeraBundle, type FrankenBundleV1 } from './bundle.ts';
 import { bytesToHex, sha256Bytes } from './crc32.ts';
 import { openEnvelope, sealEnvelope, type OpenedEnvelopeResult, type SealedEnvelopeResult } from './cryptoEnvelope.ts';
 import {
@@ -28,10 +29,11 @@ export interface StitchedChimera {
 }
 
 export interface AutopsyReport {
-  source: 'loopback' | 'wav' | 'microphone' | 'png' | 'noisy-sim';
+  source: 'loopback' | 'wav' | 'microphone' | 'png' | 'noisy-sim' | 'bundle';
   opened: OpenedEnvelopeResult;
   fskMeta?: Omit<FskDecodeResult, 'payload'>;
   stegMeta?: Omit<StegDecodeResult, 'payload'>;
+  bundleMeta?: Omit<FrankenBundleV1, 'envelopeBase64'>;
   envelopeHexPreview: string;
 }
 
@@ -175,5 +177,24 @@ export async function autopsyFromPixelGrid(
       capacityBytes: steg.capacityBytes,
     },
     envelopeHexPreview: bytesToHex(steg.payload, 40),
+  };
+}
+
+/**
+ * Validates and decrypts a specimen from a shareable `.franken.json` FRANKENWAVE_BUNDLE_V1 manifest.
+ */
+export async function autopsyFromBundleJson(
+  jsonText: string,
+  passphrase: string,
+): Promise<AutopsyReport> {
+  const { bundle, envelope } = parseChimeraBundle(jsonText);
+  const opened = await openEnvelope(envelope, passphrase);
+  const { envelopeBase64: _unused, ...bundleMeta } = bundle;
+  void _unused;
+  return {
+    source: 'bundle',
+    opened,
+    bundleMeta,
+    envelopeHexPreview: bytesToHex(envelope, 40),
   };
 }

@@ -266,7 +266,7 @@ export function decodeWavPcm16(wavBytes: Uint8Array): { samples: Float32Array; s
   return { samples, sampleRate };
 }
 
-function goertzelPower(
+export function goertzelPower(
   samples: Float32Array,
   startIdx: number,
   windowLen: number,
@@ -285,6 +285,45 @@ function goertzelPower(
     s1 = s0;
   }
   return Math.max(0, s1 * s1 + s2 * s2 - coeff * s1 * s2);
+}
+
+export interface SpectrumBin {
+  freqHz: number;
+  magnitude: number;
+}
+
+/**
+ * Computes a normalized multi-bin Goertzel spectrum across [freqMin, freqMax] for oscilloscope telemetry.
+ */
+export function computeFskSpectrum(
+  samples: Float32Array,
+  startIdx: number,
+  windowLen: number,
+  sampleRate: number,
+  freqMin = 600,
+  freqMax = 3200,
+  binCount = 27,
+): SpectrumBin[] {
+  if (samples.length === 0 || windowLen <= 0 || binCount < 2) {
+    return [];
+  }
+  const safeStart = Math.max(0, Math.min(samples.length - 1, startIdx));
+  const rawPowers: number[] = [];
+  const freqs: number[] = [];
+  let maxMag = 1e-9;
+
+  for (let i = 0; i < binCount; i++) {
+    const freqHz = freqMin + ((freqMax - freqMin) * i) / (binCount - 1);
+    const p = Math.sqrt(goertzelPower(samples, safeStart, windowLen, freqHz, sampleRate));
+    freqs.push(Math.round(freqHz));
+    rawPowers.push(p);
+    if (p > maxMag) maxMag = p;
+  }
+
+  return freqs.map((freqHz, idx) => ({
+    freqHz,
+    magnitude: Math.max(0, Math.min(1, (rawPowers[idx] ?? 0) / maxMag)),
+  }));
 }
 
 interface BitEval {

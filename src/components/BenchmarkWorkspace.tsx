@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, Cpu, Play, ShieldCheck, XCircle } from 'lucide-react';
+import { parseChimeraBundle, serializeChimeraBundle } from '../core/bundle.ts';
 import { openEnvelope, sealEnvelope } from '../core/cryptoEnvelope.ts';
 import { decodeFSK, decodeWavPcm16, encodeFSK, resampleLinear } from '../core/fskModem.ts';
-import { simulateAcousticChannel } from '../core/pipeline.ts';
+import { renderFrankenPatchPcm } from '../core/patchSynth.ts';
+import { simulateAcousticChannel, stitchChimera } from '../core/pipeline.ts';
+import { parseFrankenPatch, SPECIMEN_PRESETS } from '../core/presets.ts';
 import { decodeSteg, encodeSteg, generateSigilGrid } from '../core/stegCartridge.ts';
 
 interface BenchRow {
@@ -13,11 +16,15 @@ interface BenchRow {
   detail: string;
 }
 
-export function BenchmarkWorkspace() {
+interface BenchmarkWorkspaceProps {
+  autoRunSignal?: number;
+}
+
+export function BenchmarkWorkspace({ autoRunSignal = 0 }: BenchmarkWorkspaceProps) {
   const [rows, setRows] = useState<BenchRow[]>([]);
   const [running, setRunning] = useState(false);
 
-  const runSuite = async () => {
+  const runSuite = useCallback(async () => {
     setRunning(true);
     const out: BenchRow[] = [];
 
@@ -76,6 +83,13 @@ export function BenchmarkWorkspace() {
       return `${enc.durationSec.toFixed(2)}s WAV (${enc.wavBytes.length} B), CRC 0x${dec.crcHex}`;
     });
 
+    await runCase('1200-Baud High-Speed FSK Loopback', 'WebAudio DSP', async () => {
+      const enc = encodeFSK(sampleBytes, 1200);
+      const dec = decodeFSK(enc.samples, enc.sampleRate, 1200);
+      if (dec.crcHex !== enc.crcHex) throw new Error('CRC mismatch');
+      return `${enc.durationSec.toFixed(2)}s @ 1200 baud, CRC 0x${dec.crcHex}`;
+    });
+
     await runCase('AWGN Noise (12 dB SNR) + +0.6% Clock Drift', 'Goertzel PLL', async () => {
       const enc = encodeFSK(sampleBytes, 600);
       const noisy = simulateAcousticChannel(enc.samples, enc.sampleRate, {
@@ -108,9 +122,34 @@ export function BenchmarkWorkspace() {
       return `${enc.bytesUsed}B embedded (${enc.utilizationPct}% cap), Alpha=255 invariant OK`;
     });
 
+    await runCase('FRANKENWAVE_BUNDLE_V1 & Patch WAV Render', 'Bundle / Synth', async () => {
+      const patchPreset = SPECIMEN_PRESETS[1]!;
+      const chimera = await stitchChimera({
+        title: patchPreset.title,
+        plaintext: patchPreset.payload,
+        passphrase: patchPreset.passphrase,
+        baudRate: 600,
+      });
+      const json = serializeChimeraBundle(chimera);
+      const { envelope } = parseChimeraBundle(json);
+      const opened = await openEnvelope(envelope, patchPreset.passphrase);
+      const patch = parseFrankenPatch(opened.plaintext);
+      if (!patch) throw new Error('Patch validation failed');
+      const rendered = renderFrankenPatchPcm(patch, 1.5);
+      return `Bundle ${json.length}B CRC OK + ${rendered.wavBytes.length}B synth WAV rendered`;
+    });
+
     setRows(out);
     setRunning(false);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (autoRunSignal > 0) {
+      void runSuite();
+    }
+  }, [autoRunSignal, runSuite]);
+
+  const passedCount = rows.filter((r) => r.status === 'PASS').length;
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
@@ -128,28 +167,28 @@ export function BenchmarkWorkspace() {
             <div className="metric-k">ORGAN 1 // CRYPTOGRAPHY</div>
             <div className="metric-v" style={{ fontSize: 13 }}>PBKDF2 + AES-256-GCM</div>
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
-              120k SHA-256 iterations, 12B nonce, optional Deflate-Raw compression.
+              120k SHA-256 iterations, 12B nonce, optional Deflate-Raw compression &amp; `.franken.json` bundle.
             </div>
           </div>
           <div className="metric-cell" style={{ padding: 10 }}>
             <div className="metric-k">ORGAN 2 // 1970s TELEMETRY</div>
             <div className="metric-v" style={{ fontSize: 13 }}>1200 / 2400 Hz FSK DSP</div>
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
-              Phase-continuous audio + Goertzel DFT + transition-centered timing recovery.
+              Phase-continuous audio + Goertzel 27-bin spectrum + transition-centered timing recovery.
             </div>
           </div>
           <div className="metric-cell" style={{ padding: 10 }}>
             <div className="metric-k">ORGAN 3 // STEGANOGRAPHY</div>
             <div className="metric-v" style={{ fontSize: 13 }}>2-Bit RGB LSB Sigil</div>
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
-              512x512 SHA-256-seeded occult PCB sigil carrying 192 KB at alpha=255.
+              512x512 SHA-256-seeded occult PCB sigil carrying 192 KB at alpha=255 + LSB X-Ray inspector.
             </div>
           </div>
           <div className="metric-cell" style={{ padding: 10 }}>
             <div className="metric-k">ORGAN 4 // SANDBOX PATCH</div>
             <div className="metric-v" style={{ fontSize: 13 }}>FRANKENPATCH_V1</div>
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
-              Zero-eval declarative harmonic Canvas2D + WebAudio synth execution.
+              Zero-eval declarative harmonic Canvas2D + WebAudio synth + pure-TS WAV render.
             </div>
           </div>
         </div>
@@ -160,16 +199,21 @@ export function BenchmarkWorkspace() {
           <span className="panel-title">
             <ShieldCheck size={15} color="#ffb020" />
             IN-BROWSER LIVE VERIFICATION BENCHMARK
+            {rows.length > 0 && (
+              <span className={`panel-badge ${passedCount === rows.length ? 'lime' : 'crimson'}`}>
+                {passedCount}/{rows.length} PASSED
+              </span>
+            )}
           </span>
-          <button type="button" className="btn btn-primary" style={{ flex: 'none' }} onClick={runSuite} disabled={running}>
+          <button type="button" className="btn btn-primary" style={{ flex: 'none' }} onClick={() => void runSuite()} disabled={running}>
             <Play size={13} />
-            {running ? 'RUNNING STRESS SUITE...' : 'Run All 6 Live Browser Tests'}
+            {running ? 'RUNNING STRESS SUITE...' : 'Run All 8 Live Browser Tests'}
           </button>
         </div>
 
         {rows.length === 0 ? (
           <div style={{ padding: '20px 8px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-            Click &ldquo;Run All 6 Live Browser Tests&rdquo; to execute real WebCrypto, FSK AWGN/clock-drift DSP, and PNG LSB round-trips directly inside your browser.
+            Click &ldquo;Run All 8 Live Browser Tests&rdquo; to execute real WebCrypto, FSK 600/1200 baud AWGN/clock-drift DSP, PNG LSB round-trips, and bundle/synth checks directly inside your browser.
           </div>
         ) : (
           <table className="bench-table">

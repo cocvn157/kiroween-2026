@@ -20,3 +20,10 @@
 - [x] **3.3** Build interactive 512x512 Sigil Cartridge viewer with drag-and-drop PNG carrier upload & export (`SigilCartridgeView.tsx`).
 - [x] **3.4** Build `Stitch & Encode`, `Autopsy & Decode` (WAV, Mic, Loopback, PNG, Patch Runner), and `Anatomy & Benchmark` workspaces.
 - [x] **3.5** Add GitHub Pages workflow (`.github/workflows/deploy.yml`), verify `tsc`, `vitest`, `vite build`, and capture `1280x720` headless Edge screenshot.
+
+## Wave 4: Top-Winner Telemetry, Portability & Judge Craft Upgrades
+- [x] **4.1** Export `goertzelPower` & `computeFskSpectrum` (`600–3200 Hz` 27-bin DFT) in `src/core/fskModem.ts` and upgrade `OscilloscopeCanvas.tsx` with interactive tape scrubbing + live FFT spectrum bars.
+- [x] **4.2** Implement `src/core/bundle.ts` (`FRANKENWAVE_BUNDLE_V1` `.franken.json` export/import + CRC-32 validation) and `src/core/patchSynth.ts` (deterministic pure-TS `FRANKENPATCH_V1` WAV synth render).
+- [x] **4.3** Expand `SPECIMEN_PRESETS` to 5 curated specimens (`vault-seed`, `synth-patch`, `crimson-alarm`, `amber-organ`, `kiroween-capsule`), add `LSB X-RAY` bitplane inspection to `SigilCartridgeView.tsx`, and add `Tamper Drill` + `Load to Stitch` to `AutopsyWorkspace.tsx`.
+- [x] **4.4** Add 1-Click 5-Step `JUDGE TOUR` (`ShowcaseBanner.tsx`), keyboard shortcuts (`ShortcutsModal.tsx`), ARIA accessibility roles, headless-safe WebAudio (`createSafeAudioContext`), and 8 live browser checks (`BenchmarkWorkspace.tsx`).
+- [x] **4.5** Expand unit test coverage (`bundle.test.ts`, `patchSynth.test.ts`, `fskModem.test.ts`, `pipeline.test.ts`) past `30+` passing Vitest tests (`33/33`) and sync `.kiro/` specs/steering/hooks.

@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  autopsyFromAudioSamples,
+  autopsyFromBundleJson,
   autopsyFromPixelGrid,
   autopsyFromWavBytes,
   simulateAcousticChannel,
-  autopsyFromAudioSamples,
   stitchChimera,
 } from '../core/pipeline.ts';
+import { serializeChimeraBundle } from '../core/bundle.ts';
 import { parseFrankenPatch, SPECIMEN_PRESETS } from '../core/presets.ts';
 
 describe('FRANKENWAVE end-to-end Chimera pipeline', () => {
@@ -55,5 +57,23 @@ describe('FRANKENWAVE end-to-end Chimera pipeline', () => {
     expect(parsedPatch).not.toBeNull();
     expect(parsedPatch?.kind).toBe('FRANKENPATCH_V1');
     expect(parsedPatch?.carrierHz).toBe(110);
+  });
+
+  it('exports and restores encrypted crimson patch via .franken.json bundle while blocking wrong keys', async () => {
+    const crimsonPreset = SPECIMEN_PRESETS[2]!;
+    const chimera = await stitchChimera({
+      title: crimsonPreset.title,
+      plaintext: crimsonPreset.payload,
+      passphrase: crimsonPreset.passphrase,
+      baudRate: 1200,
+    });
+
+    const bundleJson = serializeChimeraBundle(chimera);
+    const recovered = await autopsyFromBundleJson(bundleJson, crimsonPreset.passphrase);
+    expect(recovered.source).toBe('bundle');
+    expect(recovered.opened.plaintext).toBe(crimsonPreset.payload);
+    expect(recovered.bundleMeta?.baudRate).toBe(1200);
+
+    await expect(autopsyFromBundleJson(bundleJson, 'wrong-key')).rejects.toThrow(/authentication failed/);
   });
 });

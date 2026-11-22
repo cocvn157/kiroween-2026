@@ -1,74 +1,174 @@
 import { toArrayBuffer } from './crc32.ts';
+import type { FrankenPatchV1 } from './presets.ts';
 import type { PixelGrid } from './stegCartridge.ts';
 
 export interface PlaybackHandle {
   stop: () => void;
 }
 
+function createSafeAudioContext(sampleRate?: number): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  const AudioCtx =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioCtx) return null;
+  try {
+    const ctx = sampleRate ? new AudioCtx({ sampleRate }) : new AudioCtx();
+    if (ctx.state === 'suspended') {
+      void ctx.resume().catch(() => {
+        // Ignore headless/autoplay suspension without emitting console errors
+      });
+    }
+    return ctx;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Plays mono Float32Array PCM samples through Web Audio API with progress callback.
+ * Plays mono Float32Array PCM samples through Web Audio API with progress callback and headless-safe cleanup.
  */
 export function playPcmAudio(
   samples: Float32Array,
   sampleRate: number,
   onProgress: (fraction: number) => void,
   onEnded: () => void,
+  onBlocked?: (reason: string) => void,
 ): PlaybackHandle {
-  const AudioCtx =
-    window.AudioContext ||
-    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-  const ctx = new AudioCtx({ sampleRate });
-  const buffer = ctx.createBuffer(1, samples.length, sampleRate);
-  buffer.getChannelData(0).set(samples);
+  const ctx = createSafeAudioContext(sampleRate);
+  if (!ctx || samples.length === 0) {
+    onBlocked?.('WebAudio output device unavailable in this environment (use Export .WAV instead).');
+    onEnded();
+    return { stop: () => {} };
+  }
 
-  const source = ctx.createBufferSource();
-  source.buffer = buffer;
-
-  const gain = ctx.createGain();
-  gain.gain.value = 0.42;
-
-  source.connect(gain);
-  gain.connect(ctx.destination);
-
-  const durationMs = (samples.length / sampleRate) * 1000;
-  const startedAt = performance.now();
   let stopped = false;
+  let rafId = 0;
+  try {
+    const buffer = ctx.createBuffer(1, samples.length, sampleRate);
+    buffer.getChannelData(0).set(samples);
 
-  const rafTick = () => {
-    if (stopped) return;
-    const elapsed = performance.now() - startedAt;
-    const frac = Math.min(1, elapsed / Math.max(1, durationMs));
-    onProgress(frac);
-    if (frac < 1) {
-      requestAnimationFrame(rafTick);
-    }
-  };
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
 
-  source.onended = () => {
-    if (!stopped) {
-      stopped = true;
-      onProgress(1);
-      onEnded();
-      void ctx.close();
-    }
-  };
+    const gain = ctx.createGain();
+    gain.gain.value = 0.42;
 
-  source.start();
-  requestAnimationFrame(rafTick);
+    source.connect(gain);
+    gain.connect(ctx.destination);
 
-  return {
-    stop: () => {
+    const durationMs = (samples.length / sampleRate) * 1000;
+    const startedAt = performance.now();
+
+    const rafTick = () => {
       if (stopped) return;
-      stopped = true;
-      try {
-        source.stop();
-      } catch {
-        // already ended
+      const elapsed = performance.now() - startedAt;
+      const frac = Math.min(1, elapsed / Math.max(1, durationMs));
+      onProgress(frac);
+      if (frac < 1) {
+        rafId = requestAnimationFrame(rafTick);
       }
-      void ctx.close();
-      onEnded();
-    },
-  };
+    };
+
+    source.onended = () => {
+      if (!stopped) {
+        stopped = true;
+        cancelAnimationFrame(rafId);
+        onProgress(1);
+        onEnded();
+        void ctx.close().catch(() => {});
+      }
+    };
+
+    source.start();
+    rafId = requestAnimationFrame(rafTick);
+
+    return {
+      stop: () => {
+        if (stopped) return;
+        stopped = true;
+        cancelAnimationFrame(rafId);
+        try {
+          source.stop();
+        } catch {
+          // already ended
+        }
+        void ctx.close().catch(() => {});
+        onEnded();
+      },
+    };
+  } catch {
+    void ctx.close().catch(() => {});
+    onBlocked?.('Audio playback blocked by browser policy.');
+    onEnded();
+    return { stop: () => {} };
+  }
+}
+
+/**
+ * Starts a sandboxed FM harmonic drone from a validated FRANKENPATCH_V1 definition.
+ */
+export function startPatchDrone(
+  patch: FrankenPatchV1,
+  onStopped?: () => void,
+  onBlocked?: (reason: string) => void,
+): PlaybackHandle {
+  const ctx = createSafeAudioContext();
+  if (!ctx) {
+    onBlocked?.('WebAudio synth output unavailable in this browser context (use Export Synth .WAV).');
+    onStopped?.();
+    return { stop: () => {} };
+  }
+
+  let stopped = false;
+  try {
+    const carrier = ctx.createOscillator();
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    const master = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+
+    carrier.type = 'sawtooth';
+    carrier.frequency.value = patch.carrierHz;
+
+    lfo.type = 'sine';
+    lfo.frequency.value = patch.modHz;
+    lfoGain.gain.value = patch.carrierHz * 0.12;
+
+    filter.type = 'lowpass';
+    filter.frequency.value = patch.carrierHz * 4;
+
+    master.gain.value = 0.08;
+
+    lfo.connect(lfoGain);
+    lfoGain.connect(carrier.frequency);
+    carrier.connect(filter);
+    filter.connect(master);
+    master.connect(ctx.destination);
+
+    carrier.start();
+    lfo.start();
+
+    return {
+      stop: () => {
+        if (stopped) return;
+        stopped = true;
+        try {
+          carrier.stop();
+          lfo.stop();
+        } catch {
+          // ignore
+        }
+        void ctx.close().catch(() => {});
+        onStopped?.();
+      },
+    };
+  } catch {
+    void ctx.close().catch(() => {});
+    onBlocked?.('Synth playback blocked by browser audio policy.');
+    onStopped?.();
+    return { stop: () => {} };
+  }
 }
 
 export interface MicSession {
@@ -91,10 +191,11 @@ export async function startMicCapture(): Promise<MicSession> {
     },
   });
 
-  const AudioCtx =
-    window.AudioContext ||
-    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-  const ctx = new AudioCtx();
+  const ctx = createSafeAudioContext();
+  if (!ctx) {
+    stream.getTracks().forEach((t) => t.stop());
+    throw new Error('WebAudio context could not be initialized for microphone capture.');
+  }
   const source = ctx.createMediaStreamSource(stream);
   const processor = ctx.createScriptProcessor(4096, 1, 1);
   const chunks: Float32Array[] = [];

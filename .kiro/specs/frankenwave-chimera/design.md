@@ -63,5 +63,15 @@
   - `N B` Envelope bytes
 - **Embedding Order:** Sequential pixel scan (`idx = 0..width*height-1`), 3 channels (`R, G, B`) per pixel, 2 bits per channel (`bits 7..6`, `5..4`, `3..2` packed MSB-first across 4 triplets = 3 bytes per 4 pixels). Alpha channel forced to `255` on every written pixel (and across entire generated sigil) so Canvas PNG round-trips remain bit-exact.
 
-## 3. Sandboxed Micro-Patch Schema (`FRANKENPATCH_V1`)
-Specimens carrying JSON with `"kind": "FRANKENPATCH_V1"` safely configure a real-time procedural visual harmonic + WebAudio drone synthesizer using numeric parameters (`carrierHz`, `modHz`, `symmetry`, `palette`, `pulseBpm`, `label`) validated through TypeScript type guards — zero dynamic code execution.
+## 3. Sandboxed Micro-Patch Schema (`FRANKENPATCH_V1`) & Deterministic Synth
+Specimens carrying JSON with `"kind": "FRANKENPATCH_V1"` safely configure a real-time procedural visual harmonic + WebAudio drone synthesizer using numeric parameters (`carrierHz`, `modHz`, `symmetry`, `palette`, `pulseBpm`, `label`) validated through TypeScript type guards (`parseFrankenPatch`) — zero dynamic code execution.
+- **Pure-TS Synth Render (`src/core/patchSynth.ts`):** `renderFrankenPatchPcm` deterministically generates FM-modulated harmonic sine + overtone samples (`pulseBpm` amplitude envelope + cosine fade-in/out, peak `<= 0.95`) serialized to RIFF/WAVE PCM16 via `encodeWavPcm16`.
+
+## 4. Shareable Cartridge Bundle (`FRANKENWAVE_BUNDLE_V1`, `src/core/bundle.ts`)
+- **Fields:** `schema` (`"FRANKENWAVE_BUNDLE_V1"`), `title`, `createdAt`, `baudRate` (`300 | 600 | 1200`), `encrypted`, `compressed`, `fingerprintHex`, `fskCrcHex`, `stegCrcHex`, `envelopeCrcHex`, `envelopeBase64`.
+- **Validation Gate:** `parseChimeraBundle` verifies schema, baud rate, Base64 decoding, `0x4B` envelope magic byte, and IEEE 802.3 `CRC-32` match against `envelopeCrcHex` before passing to `openEnvelope`.
+
+## 5. Multi-Bin Goertzel Spectrum & Non-Destructive LSB X-Ray
+- **27-Bin Spectrum (`computeFskSpectrum` in `src/core/fskModem.ts`):** Evaluates `sqrt(goertzelPower)` from `600 Hz` to `3200 Hz` (`100 Hz` step, aligning exact bins on `1200 Hz` Space and `2400 Hz` Mark) at the active playback/scrub window.
+- **LSB X-Ray (`src/components/SigilCartridgeView.tsx`):** Amplifies `(channel & 0x03) * 85` into a separate display `ImageData` buffer (`alpha = 255`), preserving `chimera.steg.grid` unaltered for lossless PNG export.
+- **Headless-Safe WebAudio (`src/core/browserMedia.ts`):** `createSafeAudioContext` wraps `AudioContext` instantiation and `resume()` safely so automated/muted environments never raise uncaught exceptions.

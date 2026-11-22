@@ -26,4 +26,8 @@ Before any feature or PR is considered complete, all three commands MUST pass cl
   - Capacity guard rejects oversized payloads gracefully without buffer overflow.
   - Custom non-opaque carrier regions get normalized to `alpha = 255` before LSB write so Canvas round-trips remain lossless.
 - **End-to-End Pipeline (`pipeline.test.ts`):**
-  - Full specimen stitch -> FSK WAV + Sigil PNG -> independent decode from both organs yields identical plaintext & verified SHA-256 fingerprint.
+  - Full specimen stitch -> FSK WAV + Sigil PNG + `.franken.json` bundle -> independent decode yields identical plaintext & verified SHA-256 fingerprint, while wrong passphrases are rejected cleanly.
+- **Bundle Portability (`bundle.test.ts`):**
+  - All-256-byte Base64 round-trip, malformed Base64/schema/baud rejection, and CRC-32 tamper detection on `.franken.json` manifests.
+- **Patch Synth & Spectrum (`patchSynth.test.ts`, `fskModem.test.ts`):**
+  - 5 curated presets spanning `phosphor`, `crimson`, and `amber` palettes; range clamping on `FRANKENPATCH_V1`; deterministic RIFF/WAVE PCM16 synthesis; and 27-bin `computeFskSpectrum` peak detection at `1200 Hz` and `2400 Hz`.

@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import {
   AlertTriangle,
+  ArrowUpRight,
   CheckCircle2,
   Copy,
+  Download,
   FileAudio,
   FileImage,
+  FileJson,
   Mic,
   Play,
   Radio,
   Repeat,
+  ShieldAlert,
   Square,
   Volume2,
   Waves,
@@ -16,10 +20,15 @@ import {
 import {
   imageFileToPixelGrid,
   startMicCapture,
+  startPatchDrone,
+  triggerDownload,
   type MicSession,
+  type PlaybackHandle,
 } from '../core/browserMedia.ts';
+import { renderFrankenPatchPcm } from '../core/patchSynth.ts';
 import {
   autopsyFromAudioSamples,
+  autopsyFromBundleJson,
   autopsyFromPixelGrid,
   autopsyFromWavBytes,
   type AutopsyReport,
@@ -33,14 +42,17 @@ interface AutopsyWorkspaceProps {
   errorMsg: string | null;
   hasActiveChimera: boolean;
   onRunLoopback: (mode: 'loopback' | 'noisy-sim' | 'png') => void;
+  onRunTamperDrill: () => void;
   onReportReady: (report: AutopsyReport) => void;
   onError: (msg: string) => void;
+  onLoadRecoveredToStitch: (plaintext: string, title?: string) => void;
 }
 
 function FrankenPatchRunner({ patch }: { patch: FrankenPatchV1 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [droneOn, setDroneOn] = useState(false);
-  const audioRef = useRef<{ stop: () => void } | null>(null);
+  const [audioNotice, setAudioNotice] = useState<string | null>(null);
+  const audioRef = useRef<PlaybackHandle | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -103,7 +115,7 @@ function FrankenPatchRunner({ patch }: { patch: FrankenPatchV1 }) {
       ctx.font = '10.5px "JetBrains Mono", Consolas, monospace';
       ctx.fillStyle = '#e8f4ed';
       ctx.fillText(
-        `PATCH // ${patch.label} • ${patch.carrierHz}Hz • MOD ${patch.modHz}Hz • ${patch.symmetry}-FOLD`,
+        `PATCH // ${patch.label} • ${patch.carrierHz}Hz • MOD ${patch.modHz}Hz • ${patch.symmetry}-FOLD • ${patch.pulseBpm}BPM`,
         10,
         16,
       );
@@ -132,50 +144,25 @@ function FrankenPatchRunner({ patch }: { patch: FrankenPatchV1 }) {
       setDroneOn(false);
       return;
     }
-
-    const AudioCtx =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    const ctx = new AudioCtx();
-    const carrier = ctx.createOscillator();
-    const lfo = ctx.createOscillator();
-    const lfoGain = ctx.createGain();
-    const master = ctx.createGain();
-
-    carrier.type = 'sawtooth';
-    carrier.frequency.value = patch.carrierHz;
-
-    lfo.type = 'sine';
-    lfo.frequency.value = patch.modHz;
-    lfoGain.gain.value = patch.carrierHz * 0.12;
-
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = patch.carrierHz * 4;
-
-    master.gain.value = 0.08;
-
-    lfo.connect(lfoGain);
-    lfoGain.connect(carrier.frequency);
-    carrier.connect(filter);
-    filter.connect(master);
-    master.connect(ctx.destination);
-
-    carrier.start();
-    lfo.start();
+    setAudioNotice(null);
     setDroneOn(true);
-
-    audioRef.current = {
-      stop: () => {
-        try {
-          carrier.stop();
-          lfo.stop();
-        } catch {
-          // ignore
-        }
-        void ctx.close();
+    audioRef.current = startPatchDrone(
+      patch,
+      () => {
+        setDroneOn(false);
+        audioRef.current = null;
       },
-    };
+      (reason) => {
+        setAudioNotice(reason);
+        setDroneOn(false);
+      },
+    );
+  };
+
+  const handleExportSynthWav = () => {
+    const rendered = renderFrankenPatchPcm(patch, 4);
+    const slug = patch.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'patch';
+    triggerDownload(rendered.wavBytes, `frankenpatch-${slug}.wav`, 'audio/wav');
   };
 
   return (
@@ -185,12 +172,30 @@ function FrankenPatchRunner({ patch }: { patch: FrankenPatchV1 }) {
           <Volume2 size={14} color="#39ff88" />
           SANDBOXED MICRO-PATCH ENGINE (ZERO-EVAL)
         </span>
-        <button type="button" className="btn btn-amber" onClick={toggleDrone}>
-          {droneOn ? <Square size={12} /> : <Play size={12} />}
-          {droneOn ? 'Mute Synth' : 'Energize Synth'}
-        </button>
+        <div className="btn-group">
+          <button
+            type="button"
+            className="btn"
+            style={{ padding: '5px 9px', fontSize: 11 }}
+            onClick={handleExportSynthWav}
+            title="Render 4s deterministic FM harmonic .WAV without external audio deps"
+          >
+            <Download size={12} />
+            Render .WAV
+          </button>
+          <button type="button" className="btn btn-amber" style={{ padding: '5px 10px', fontSize: 11 }} onClick={toggleDrone}>
+            {droneOn ? <Square size={12} /> : <Play size={12} />}
+            {droneOn ? 'Mute Synth' : 'Energize Synth'}
+          </button>
+        </div>
       </div>
-      <canvas ref={canvasRef} className="patch-canvas" />
+      {audioNotice && (
+        <div className="alert-banner amber" style={{ marginTop: 0, marginBottom: 8 }} role="status">
+          <AlertTriangle size={14} />
+          <span>{audioNotice}</span>
+        </div>
+      )}
+      <canvas ref={canvasRef} className="patch-canvas" aria-label={`Harmonic mandala visualizer for ${patch.label}`} />
     </div>
   );
 }
@@ -202,11 +207,14 @@ export function AutopsyWorkspace({
   errorMsg,
   hasActiveChimera,
   onRunLoopback,
+  onRunTamperDrill,
   onReportReady,
   onError,
+  onLoadRecoveredToStitch,
 }: AutopsyWorkspaceProps) {
   const wavInputRef = useRef<HTMLInputElement | null>(null);
   const pngInputRef = useRef<HTMLInputElement | null>(null);
+  const bundleInputRef = useRef<HTMLInputElement | null>(null);
   const micRef = useRef<MicSession | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -241,6 +249,19 @@ export function AutopsyWorkspace({
       onReportReady(res);
     } catch (err) {
       onError(err instanceof Error ? err.message : 'PNG steganography extraction failed.');
+    }
+    ev.target.value = '';
+  };
+
+  const handleBundleFile = async (ev: ChangeEvent<HTMLInputElement>) => {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    try {
+      const jsonText = await file.text();
+      const res = await autopsyFromBundleJson(jsonText, passphrase);
+      onReportReady(res);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Bundle import failed.');
     }
     ev.target.value = '';
   };
@@ -307,12 +328,12 @@ export function AutopsyWorkspace({
           />
         </div>
 
-        <div className="field-label">INSTANT LOOPBACK FROM ACTIVE SPECIMEN</div>
+        <div className="field-label">INSTANT LOOPBACK &amp; TAMPER DIAGNOSTICS</div>
         <div className="btn-group" style={{ marginBottom: 14 }}>
           <button
             type="button"
             className="btn btn-primary"
-            style={{ flex: '1 1 140px' }}
+            style={{ flex: '1 1 150px' }}
             onClick={() => onRunLoopback('loopback')}
             disabled={!hasActiveChimera}
           >
@@ -337,10 +358,20 @@ export function AutopsyWorkspace({
             <FileImage size={13} />
             Sigil PNG Extract
           </button>
+          <button
+            type="button"
+            className="btn btn-crimson"
+            onClick={onRunTamperDrill}
+            disabled={!hasActiveChimera}
+            title="Verify explicit rejection when passphrase is wrong or carrier bytes are mutated"
+          >
+            <ShieldAlert size={13} />
+            Tamper Drill
+          </button>
         </div>
 
         <div className="field-label">EXTERNAL CARRIER FILES &amp; ACOUSTIC CAPTURE</div>
-        <div style={{ display: 'grid', gap: 10 }}>
+        <div style={{ display: 'grid', gap: 9 }}>
           <input
             ref={wavInputRef}
             type="file"
@@ -377,6 +408,24 @@ export function AutopsyWorkspace({
             </div>
           </button>
 
+          <input
+            ref={bundleInputRef}
+            type="file"
+            accept=".json,.franken.json,application/json"
+            style={{ display: 'none' }}
+            onChange={handleBundleFile}
+          />
+          <button
+            type="button"
+            className="dropzone"
+            onClick={() => bundleInputRef.current?.click()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: '#e8f4ed', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+              <FileJson size={16} color="#38e8d8" />
+              Import .FRANKEN.JSON Shareable Specimen Bundle
+            </div>
+          </button>
+
           <button
             type="button"
             className={`btn ${isRecording ? 'btn-crimson' : ''}`}
@@ -405,7 +454,7 @@ export function AutopsyWorkspace({
         </div>
 
         {errorMsg && (
-          <div className="alert-banner error" style={{ marginTop: 0, marginBottom: 12 }}>
+          <div className="alert-banner error" role="alert" style={{ marginTop: 0, marginBottom: 12 }}>
             <AlertTriangle size={15} />
             <span>{errorMsg}</span>
           </div>
@@ -429,21 +478,27 @@ export function AutopsyWorkspace({
               <div className="metric-cell">
                 <div className="metric-k">CARRIER CRC-32</div>
                 <div className="metric-v" style={{ color: '#ffb020' }}>
-                  0x{report.fskMeta?.crcHex ?? report.stegMeta?.crcHex ?? '--------'}
+                  0x
+                  {report.fskMeta?.crcHex ??
+                    report.stegMeta?.crcHex ??
+                    report.bundleMeta?.envelopeCrcHex ??
+                    '--------'}
                 </div>
               </div>
               <div className="metric-cell">
                 <div className="metric-k">
-                  {report.fskMeta ? 'BAUD / DRIFT' : 'STEG CAPACITY'}
+                  {report.fskMeta ? 'BAUD / DRIFT' : report.bundleMeta ? 'BUNDLE BAUD' : 'STEG CAPACITY'}
                 </div>
                 <div className="metric-v">
                   {report.fskMeta
                     ? `${report.fskMeta.baudRate} (${report.fskMeta.clockDriftPct > 0 ? '+' : ''}${report.fskMeta.clockDriftPct}%)`
-                    : `${Math.round((report.stegMeta?.capacityBytes ?? 0) / 1024)} KB`}
+                    : report.bundleMeta
+                      ? `${report.bundleMeta.baudRate} BD`
+                      : `${Math.round((report.stegMeta?.capacityBytes ?? 0) / 1024)} KB`}
                 </div>
               </div>
               <div className="metric-cell">
-                <div className="metric-k">{report.fskMeta ? 'EST. SNR' : 'COMPRESSED'}</div>
+                <div className="metric-k">{report.fskMeta ? 'EST. SNR' : 'COMPRESSION'}</div>
                 <div className="metric-v">
                   {report.fskMeta
                     ? `${report.fskMeta.snrEstimateDb} dB`
@@ -456,15 +511,29 @@ export function AutopsyWorkspace({
 
             <div className="field-label">
               <span>RECOVERED PAYLOAD</span>
-              <button
-                type="button"
-                className="btn"
-                style={{ padding: '3px 8px', fontSize: 10.5 }}
-                onClick={handleCopy}
-              >
-                <Copy size={11} />
-                {copied ? 'COPIED' : 'COPY'}
-              </button>
+              <div className="btn-group">
+                <button
+                  type="button"
+                  className="btn"
+                  style={{ padding: '3px 8px', fontSize: 10.5 }}
+                  onClick={() =>
+                    onLoadRecoveredToStitch(report.opened.plaintext, report.bundleMeta?.title)
+                  }
+                  title="Send recovered payload back to Operating Table for editing or re-suturing"
+                >
+                  <ArrowUpRight size={11} />
+                  LOAD TO STITCH
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  style={{ padding: '3px 8px', fontSize: 10.5 }}
+                  onClick={handleCopy}
+                >
+                  <Copy size={11} />
+                  {copied ? 'COPIED' : 'COPY'}
+                </button>
+              </div>
             </div>
             <pre
               style={{
@@ -498,7 +567,7 @@ export function AutopsyWorkspace({
               fontSize: 12,
             }}
           >
-            Select a loopback channel on the left, drop a `.WAV` / `.PNG` carrier, or capture live FSK audio from your microphone.
+            Select a loopback channel on the left, drop a `.WAV` / `.PNG` / `.FRANKEN.JSON` carrier, or capture live FSK audio from your microphone.
           </div>
         )}
       </section>

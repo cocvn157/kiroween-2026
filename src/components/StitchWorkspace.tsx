@@ -1,21 +1,30 @@
-import { useRef, type ChangeEvent } from 'react';
+import { useMemo, useRef, type ChangeEvent, type KeyboardEvent } from 'react';
 import {
   AlertTriangle,
   Download,
+  FileJson,
   FlaskConical,
   ImagePlus,
+  Music2,
   Play,
   RefreshCw,
   Repeat,
   RotateCcw,
   Square,
+  Upload,
   Waves,
   Zap,
 } from 'lucide-react';
+import {
+  imageFileToPixelGrid,
+  pixelGridToPngBlob,
+  triggerDownload,
+} from '../core/browserMedia.ts';
+import { serializeChimeraBundle } from '../core/bundle.ts';
 import type { BaudRate } from '../core/fskModem.ts';
+import { renderFrankenPatchPcm } from '../core/patchSynth.ts';
 import type { StitchedChimera } from '../core/pipeline.ts';
-import { SPECIMEN_PRESETS } from '../core/presets.ts';
-import { imageFileToPixelGrid, pixelGridToPngBlob, triggerDownload } from '../core/browserMedia.ts';
+import { parseFrankenPatch, SPECIMEN_PRESETS } from '../core/presets.ts';
 import type { PixelGrid } from '../core/stegCartridge.ts';
 import { OscilloscopeCanvas } from './OscilloscopeCanvas.tsx';
 import { SigilCartridgeView } from './SigilCartridgeView.tsx';
@@ -35,10 +44,14 @@ interface StitchWorkspaceProps {
   onSelectPreset: (id: string) => void;
   customCarrier: PixelGrid | null;
   onCustomCarrierChange: (grid: PixelGrid | null) => void;
+  sigilXray: boolean;
+  onToggleSigilXray: () => void;
   chimera: StitchedChimera | null;
   isStitching: boolean;
   errorMsg: string | null;
+  audioNotice: string | null;
   onStitch: () => void;
+  onImportBundleText: (jsonText: string) => void;
   isPlayingAudio: boolean;
   playProgress: number;
   onTogglePlay: () => void;
@@ -60,17 +73,28 @@ export function StitchWorkspace({
   onSelectPreset,
   customCarrier,
   onCustomCarrierChange,
+  sigilXray,
+  onToggleSigilXray,
   chimera,
   isStitching,
   errorMsg,
+  audioNotice,
   onStitch,
+  onImportBundleText,
   isPlayingAudio,
   playProgress,
   onTogglePlay,
   onLoopbackAutopsy,
 }: StitchWorkspaceProps) {
   const carrierInputRef = useRef<HTMLInputElement | null>(null);
+  const bundleInputRef = useRef<HTMLInputElement | null>(null);
   const utf8ByteCount = new TextEncoder().encode(plaintext).length;
+  const activePatch = useMemo(() => parseFrankenPatch(plaintext), [plaintext]);
+
+  const slug = (chimera?.title || title || 'specimen')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || 'specimen';
 
   const handleCarrierUpload = async (ev: ChangeEvent<HTMLInputElement>) => {
     const file = ev.target.files?.[0];
@@ -84,17 +108,47 @@ export function StitchWorkspace({
     ev.target.value = '';
   };
 
+  const handleBundleUpload = async (ev: ChangeEvent<HTMLInputElement>) => {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      onImportBundleText(text);
+    } finally {
+      ev.target.value = '';
+    }
+  };
+
   const handleDownloadWav = () => {
     if (!chimera) return;
-    const slug = (chimera.title || 'specimen').toLowerCase().replace(/[^a-z0-9]+/g, '-');
     triggerDownload(chimera.fsk.wavBytes, `frankenwave-${slug}.wav`, 'audio/wav');
   };
 
   const handleDownloadPng = async () => {
     if (!chimera) return;
     const blob = await pixelGridToPngBlob(chimera.steg.grid);
-    const slug = (chimera.title || 'specimen').toLowerCase().replace(/[^a-z0-9]+/g, '-');
     triggerDownload(blob, `frankenwave-${slug}-sigil.png`, 'image/png');
+  };
+
+  const handleDownloadBundle = () => {
+    if (!chimera) return;
+    const json = serializeChimeraBundle(chimera);
+    triggerDownload(new Blob([json], { type: 'application/json' }), `frankenwave-${slug}.franken.json`, 'application/json');
+  };
+
+  const handleDownloadPatchWav = () => {
+    if (!activePatch) return;
+    const rendered = renderFrankenPatchPcm(activePatch, 4);
+    triggerDownload(rendered.wavBytes, `frankenpatch-${slug}.wav`, 'audio/wav');
+  };
+
+  const handleTextareaKeyDown = (ev: KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((ev.ctrlKey || ev.metaKey) && ev.key === 'Enter') {
+      ev.preventDefault();
+      if (!isStitching && plaintext.length > 0) {
+        onStitch();
+      }
+    }
   };
 
   return (
@@ -166,9 +220,28 @@ export function StitchWorkspace({
             className="text-area"
             value={plaintext}
             onChange={(e) => onPlaintextChange(e.target.value)}
-            placeholder="Paste an API key, JSON secret, note, or FRANKENPATCH_V1 definition..."
+            onKeyDown={handleTextareaKeyDown}
+            placeholder="Paste an API key, JSON secret, note, or FRANKENPATCH_V1 definition (Ctrl+Enter to suture)..."
           />
         </div>
+
+        {activePatch && (
+          <div className="patch-chip-row">
+            <span className="panel-badge lime">
+              PATCH DETECTED: {activePatch.label} ({activePatch.carrierHz}Hz / {activePatch.symmetry}-FOLD / {activePatch.palette.toUpperCase()})
+            </span>
+            <button
+              type="button"
+              className="btn"
+              style={{ padding: '4px 9px', fontSize: 10.5 }}
+              onClick={handleDownloadPatchWav}
+              title="Render deterministic 4s FM harmonic audio WAV straight from patch parameters"
+            >
+              <Music2 size={12} />
+              Synth .WAV (4s)
+            </button>
+          </div>
+        )}
 
         <div className="controls-strip">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -181,6 +254,7 @@ export function StitchWorkspace({
                   key={b}
                   type="button"
                   className={`baud-btn ${baudRate === b ? 'active' : ''}`}
+                  aria-pressed={baudRate === b}
                   onClick={() => onBaudRateChange(b)}
                 >
                   {b}
@@ -221,10 +295,48 @@ export function StitchWorkspace({
           </button>
         </div>
 
+        <div className="bundle-bar">
+          <input
+            ref={bundleInputRef}
+            type="file"
+            accept=".json,.franken.json,application/json"
+            style={{ display: 'none' }}
+            onChange={handleBundleUpload}
+          />
+          <button
+            type="button"
+            className="btn"
+            style={{ flex: 1, fontSize: 11 }}
+            onClick={handleDownloadBundle}
+            disabled={!chimera}
+            title="Export shareable integrity-verified .franken.json cartridge manifest"
+          >
+            <FileJson size={13} color="#38e8d8" />
+            Export .FRANKEN.JSON
+          </button>
+          <button
+            type="button"
+            className="btn"
+            style={{ flex: 1, fontSize: 11 }}
+            onClick={() => bundleInputRef.current?.click()}
+            title="Import & verify a .franken.json bundle into Autopsy"
+          >
+            <Upload size={13} color="#ffb020" />
+            Import .FRANKEN.JSON
+          </button>
+        </div>
+
         {errorMsg && (
-          <div className="alert-banner error">
+          <div className="alert-banner error" role="alert">
             <AlertTriangle size={15} />
             <span>{errorMsg}</span>
+          </div>
+        )}
+
+        {audioNotice && (
+          <div className="alert-banner amber" role="status">
+            <AlertTriangle size={15} />
+            <span>{audioNotice}</span>
           </div>
         )}
 
@@ -327,7 +439,11 @@ export function StitchWorkspace({
 
           <div className="sigil-layout">
             {chimera ? (
-              <SigilCartridgeView grid={chimera.steg.grid} />
+              <SigilCartridgeView
+                grid={chimera.steg.grid}
+                xrayMode={sigilXray}
+                onToggleXray={onToggleSigilXray}
+              />
             ) : (
               <div className="sigil-frame" />
             )}

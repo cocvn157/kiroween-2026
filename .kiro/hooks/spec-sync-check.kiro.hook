@@ -7,7 +7,9 @@
     "patterns": [
       "src/core/cryptoEnvelope.ts",
       "src/core/fskModem.ts",
-      "src/core/stegCartridge.ts"
+      "src/core/stegCartridge.ts",
+      "src/core/bundle.ts",
+      "src/core/patchSynth.ts"
     ]
   },
   "then": {

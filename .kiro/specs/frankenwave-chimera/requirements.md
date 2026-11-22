@@ -24,4 +24,16 @@ FRANKENWAVE is a browser-native, zero-backend security and media laboratory buil
 
 ### Requirement 4: Zero-Signup 10-Second Interactive Experience
 - **4.1** WHEN the application boots, THE SYSTEM SHALL automatically load and suture a default specimen so the oscilloscope trace, carrier spectrum, and sigil cartridge are immediately alive and testable in `<1 second`.
-- **4.2** THE SYSTEM SHALL include a dedicated **Anatomy & Benchmark** view allowing judges to execute deterministic loopback, noise, drift, tamper-detection, and steg-capacity benchmarks in-browser.
+- **4.2** THE SYSTEM SHALL include a dedicated **Anatomy & Benchmark** view allowing judges to execute 8 deterministic loopback, high-baud, noise, drift, tamper-detection, steg-capacity, and bundle/synth benchmarks in-browser.
+
+### Requirement 5: Shareable `.franken.json` Bundle & Deterministic Patch WAV Render
+- **5.1** WHEN a specimen is stitched, THE SYSTEM SHALL allow exporting and re-importing a versioned `FRANKENWAVE_BUNDLE_V1` (`.franken.json`) manifest containing Base64 envelope bytes and an IEEE 802.3 `envelopeCrcHex` checksum, rejecting any tampered or invalid-schema bundle.
+- **5.2** WHEN a payload validates as `FRANKENPATCH_V1`, THE SYSTEM SHALL allow rendering a deterministic 16-bit RIFF/WAVE FM harmonic audio file (`renderFrankenPatchPcm`) purely in TypeScript without external dependencies, alongside live WebAudio drone synthesis.
+
+### Requirement 6: Interactive Telemetry Scrubber & LSB X-Ray Inspector
+- **6.1** THE SYSTEM SHALL render a 27-bin Goertzel spectrum (`600–3200 Hz`) alongside the FSK sine and demodulated bit trace, supporting pointer click/drag and keyboard arrow scrubbing across guard, pilot, preamble/sync, ciphertext, and tail regions.
+- **6.2** WHEN the user toggles **LSB X-RAY**, THE SYSTEM SHALL render a non-destructive bitplane projection (`(channel & 0x03) * 85`) exposing embedded `KWST01` pixel bands while leaving the underlying `PixelGrid` untouched.
+
+### Requirement 7: Guided Judge Showcase, Keyboard Accessibility & Headless Safety
+- **7.1** WHEN the user activates **JUDGE TOUR** (or presses `J`), THE SYSTEM SHALL guide them through a 5-step live showcase covering dual-organ suture, LSB X-Ray inspection, 14 dB AWGN + skew autopsy, sandboxed `FRANKENPATCH_V1` extraction, and the 8-case live browser benchmark.
+- **7.2** THE SYSTEM SHALL provide semantic ARIA roles (`tablist`, `tab`, `slider`, `alert`, `dialog`), visible `:focus-visible` rings, keyboard shortcuts (`1/2/3`, `Ctrl+Enter`, `Space`, `J`, `?`, `Esc`), and graceful WebAudio notices when browser audio output is blocked or unavailable.

@@ -1,4 +1,4 @@
-import { Activity, Cpu, FlaskConical, Radio } from 'lucide-react';
+import { Activity, Cpu, FlaskConical, Keyboard, Radio, Sparkles } from 'lucide-react';
 
 export type WorkspaceTab = 'stitch' | 'autopsy' | 'benchmark';
 
@@ -8,6 +8,9 @@ interface HeaderBarProps {
   baudRate: number;
   encrypted: boolean;
   fingerprintHex: string;
+  showcaseActive: boolean;
+  onToggleShowcase: () => void;
+  onOpenShortcuts: () => void;
 }
 
 export function HeaderBar({
@@ -16,6 +19,9 @@ export function HeaderBar({
   baudRate,
   encrypted,
   fingerprintHex,
+  showcaseActive,
+  onToggleShowcase,
+  onOpenShortcuts,
 }: HeaderBarProps) {
   return (
     <header className="header-bar">
@@ -40,7 +46,7 @@ export function HeaderBar({
         <div className="brand-title-wrap">
           <div className="brand-title">
             FRANKENWAVE
-            <span className="track-chip">KIROWEEN // FRANKENSTEIN</span>
+            <span className="track-chip">KIROWEEN</span>
           </div>
           <div className="brand-subtitle">
             WebCrypto • 1200/2400Hz FSK Modem • LSB Sigil
@@ -48,9 +54,11 @@ export function HeaderBar({
         </div>
       </div>
 
-      <nav className="nav-tabs" aria-label="Primary Workspace">
+      <nav className="nav-tabs" role="tablist" aria-label="Primary Workspace">
         <button
           type="button"
+          role="tab"
+          aria-selected={activeTab === 'stitch'}
           className={`nav-tab ${activeTab === 'stitch' ? 'active' : ''}`}
           onClick={() => onSelectTab('stitch')}
         >
@@ -59,6 +67,8 @@ export function HeaderBar({
         </button>
         <button
           type="button"
+          role="tab"
+          aria-selected={activeTab === 'autopsy'}
           className={`nav-tab ${activeTab === 'autopsy' ? 'active' : ''}`}
           onClick={() => onSelectTab('autopsy')}
         >
@@ -67,6 +77,8 @@ export function HeaderBar({
         </button>
         <button
           type="button"
+          role="tab"
+          aria-selected={activeTab === 'benchmark'}
           className={`nav-tab ${activeTab === 'benchmark' ? 'active' : ''}`}
           onClick={() => onSelectTab('benchmark')}
         >
@@ -75,18 +87,43 @@ export function HeaderBar({
         </button>
       </nav>
 
-      <div className="status-pills">
-        <span className="status-pill">
-          <span className="status-dot" />
-          {encrypted ? 'AES-256-GCM' : 'PLAIN SPECIMEN'}
-        </span>
-        <span className="status-pill">
-          <Activity size={12} color="#ffb020" />
-          {baudRate} BAUD
-        </span>
-        <span className="status-pill" title="Active Specimen SHA-256 Prefix">
-          FP:{fingerprintHex || '--------'}
-        </span>
+      <div className="header-right-group">
+        <button
+          type="button"
+          className={`btn tour-btn ${showcaseActive ? 'btn-primary' : 'btn-amber'}`}
+          style={{ flex: 'none', padding: '5px 10px', fontSize: 11 }}
+          onClick={onToggleShowcase}
+          aria-pressed={showcaseActive}
+          title="Run 1-Click Guided Judge Showcase (Shortcut: J)"
+        >
+          <Sparkles size={12} />
+          {showcaseActive ? 'TOUR ACTIVE' : 'JUDGE TOUR'}
+        </button>
+
+        <button
+          type="button"
+          className="btn"
+          style={{ padding: '5px 8px', fontSize: 11 }}
+          onClick={onOpenShortcuts}
+          aria-label="Keyboard shortcuts (?)"
+          title="Keyboard shortcuts (?)"
+        >
+          <Keyboard size={13} />
+        </button>
+
+        <div className="status-pills">
+          <span className="status-pill">
+            <span className="status-dot" />
+            {encrypted ? 'AES-256-GCM' : 'PLAIN SPECIMEN'}
+          </span>
+          <span className="status-pill">
+            <Activity size={12} color="#ffb020" />
+            {baudRate} BAUD
+          </span>
+          <span className="status-pill" title={`Active Specimen SHA-256: ${fingerprintHex || '--------'}`}>
+            FP:{fingerprintHex ? fingerprintHex.slice(0, 8) : '--------'}
+          </span>
+        </div>
       </div>
     </header>
   );
